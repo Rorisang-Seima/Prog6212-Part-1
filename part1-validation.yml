@@ -1,0 +1,73 @@
+name: RaceDay Part 1 Validation
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  validate-part1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required files
+        run: |
+          set -e
+          test -d docs
+          test -f docs/RaceDay-ERD.png
+          test -f docs/RaceDay-API-Endpoint-Plan.pdf
+          test -f docs/RaceDay-API-Endpoint-Plan.md
+          test -f docs/RaceDay-Database.sql
+          test -f docs/RaceDay-Part1-Design-Rationale.pdf
+          test -f README.md
+          test -f .github/workflows/part1-validation.yml
+
+      - name: Install image dependency
+        run: python -m pip install pillow --quiet
+
+      - name: Validate ERD image
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          img = Image.open('docs/RaceDay-ERD.png')
+          assert img.width >= 2200 and img.height >= 1300
+          print(f'ERD OK: {img.width}x{img.height}')
+          PY
+
+      - name: Validate SQL entities and seed content
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          sql = Path('docs/RaceDay-Database.sql').read_text(encoding='utf-8')
+          for e in ['Users','Events','Categories','EventCategories','Enrolments','Results']:
+              assert f'CREATE TABLE dbo.{e}' in sql, f'Missing {e}'
+          assert sql.count("N'Organiser'") >= 2
+          assert sql.count("N'Participant'") >= 2
+          assert 'INSERT INTO dbo.Events' in sql
+          assert 'INSERT INTO dbo.EventCategories' in sql
+          assert 'INSERT INTO dbo.Enrolments' in sql
+          assert 'INSERT INTO dbo.Results' in sql
+          print('SQL structure checks passed.')
+          PY
+
+      - name: Validate API endpoint coverage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          plan = Path('docs/RaceDay-API-Endpoint-Plan.md').read_text(encoding='utf-8')
+          for route in ['/api/auth/register','/api/auth/login','/api/users/me','/api/events','/api/categories','/api/enrolments','/api/results']:
+              assert route in plan, f'Missing endpoint coverage: {route}'
+          print('API coverage checks passed.')
+          PY
+
+      - name: Validate PDFs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for p in [Path('docs/RaceDay-API-Endpoint-Plan.pdf'), Path('docs/RaceDay-Part1-Design-Rationale.pdf')]:
+              assert p.read_bytes()[:5] == b'%PDF-', f'Invalid PDF: {p}'
+          print('PDF checks passed.')
+          PY
